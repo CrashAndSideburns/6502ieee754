@@ -166,7 +166,7 @@ increment_mantissa:
   ROR $07
   PHP
   INC $0a
-  PLA
+  PLP
   BCC return
   INY
   JMP rounding_msb_one
