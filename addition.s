@@ -67,18 +67,25 @@ first_parameter_subnormal:
   ROR $09
 
 align_mantissas:
+  ; initialise data needed for later rounding
   LDY #$00
+  CLC
+  PHP
+
   SEC
   SBC $05 ; Accumulator now contains exp1 - exp2.
   BEQ sum_mantissas
   TAX     ; Store difference in X register.
   BPL shift_second_mantissa ; Shift second mantissa if exp1 > exp2.
 shift_first_mantissa:
+  ; pull status register from stack to prevent overflow
+  PLP
   ; rotate all bits of mantissa one right
   LSR $09
   ROR $08
   ROR $07
-  ; increment Y if the bit shifted out was a 1
+  ; increment Y if the bit shifted out was a 1, and store carry
+  PHP
   BCC zero_shifted_out_first
   INY
 zero_shifted_out_first:
@@ -92,11 +99,14 @@ zero_shifted_out_first:
   JMP sum_mantissas
 
 shift_second_mantissa:
+  ; pull status register from stack to prevent overflow
+  PLP
   ; rotate all bits of mantissa one right
   LSR $04
   ROR $03
   ROR $02
-  ; increment Y if the bit shifted out was a 1
+  ; increment Y if the bit shifted out was a 1, and store carry
+  PHP
   BCC zero_shifted_out_second
   INY
 zero_shifted_out_second:
@@ -117,13 +127,49 @@ sum_mantissas:
   LDA $09
   ADC $04
   STA $09
-  ; if mantissas do not overflow, return
-  BCC return
+  ; if mantissas do not overflow, go to rounding
+  BCC round
   ; if mantissa overflows, shift mantissa down and increment exponent
   ROR $09
   ROR $08
   ROR $07
   INC $0a
+
+round:
+  ; round mantissas to even
+  PLP
+  ; if the last bit shifted out was a 0 just return
+  BCC return
+rounding_msb_one:
+  CPY #$02
+  BCS increment_mantissa
+  LDA $09
+  ; mask off all but the LSB of the new mantissa
+  AND #$01
+  ; if the LSB is 0, return
+  BEQ return
+increment_mantissa:
+  CLC
+  LDA $07
+  ADC #$01
+  STA $07
+  LDA $08
+  ADC #$00
+  STA $08
+  LDA $09
+  ADC #$00
+  STA $09
+  BCC return
+  ; we overflowed the mantissa during rounding
+  ROR $09
+  ROR $08
+  ROR $07
+  PHP
+  INC $0a
+  PLA
+  BCC return
+  INY
+  JMP rounding_msb_one
 
 return:
   ; shift implied bit out of mantissa, rotate sign and exp LSB through
