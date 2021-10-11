@@ -1,12 +1,10 @@
 addition:
-pop_return_address:
   ; Begin by pulling return address off of stack.
   PLA
   STA $00
   PLA
   STA $01
 
-pop_second_parameter:
   ; Pull 2 LSBs of second parameter off of stack.
   PLA
   STA $02
@@ -18,13 +16,12 @@ pop_second_parameter:
   ASL
   STA $04
 
-  ; Pull MSB off of stack, shift in exponent LSB, store sign in byte 5.
+  ; Pull MSB off of stack, shift in exponent LSB, store sign at $06.
   PLA
   ROL
   STA $05
   ROL $06
 
-pop_first_parameter:
   ; Pull 2 LSBs of first parameter off of stack.
   PLA
   STA $07
@@ -36,88 +33,98 @@ pop_first_parameter:
   ASL
   STA $09
 
-  ; Pull MSB off of stack, shift in exponent LSB, store sign in byte 5.
+  ; Pull MSB off of stack, shift in exponent LSB, store sign at $0b.
   PLA
   ROL
   STA $0a
   ROL $0b
 
   ; Add appropriate implicit 1's/0's to mantissas.
-add_second_implicit_bit:
   ; Shift in an implicit 1 if exponent != 0, else implicit 0.
+.add_second_implicit_bit:
   LDA $05
   CMP #$00
-  BEQ second_parameter_subnormal
-  SEC
-  ROR $04
-  JMP add_first_implicit_bit
-second_parameter_subnormal:
+  BNE .second_parameter_normal
   CLC
   ROR $04
-add_first_implicit_bit:
-  ; Shift in an implicit 1 if exponent != 0, else implicit 0.
+  JMP .add_first_implicit_bit
+.second_parameter_normal:
+  SEC
+  ROR $04
+  
+.add_first_implicit_bit:
   LDA $0a
   CMP #$00
-  BEQ first_parameter_subnormal
-  SEC
-  ROR $09
-  JMP align_mantissas
-first_parameter_subnormal:
+  BNE .first_parameter_normal
   CLC
   ROR $09
+  JMP .align_mantissas
+.first_parameter_normal:
+  SEC
+  ROR $09
 
-align_mantissas:
-  ; initialise data needed for later rounding
+.align_mantissas:
+  ; Y stores the number of 1 bits shifted off in alignment.
+  ; Carry bit stores the value of the last bit shifted off.
   LDY #$00
   CLC
   PHP
 
+  ; Subtract EXP2 from EXP1 already stored in A.
+  ; If EXP1 - EXP2 == 0, sum mantissas.
+  ; If EXP1 - EXP2  > 0, shift second mantissa down.
+  ; If EXP1 - EXP2  < 0, shift first mantissa down.
   SEC
-  SBC $05 ; Accumulator now contains exp1 - exp2.
-  BEQ sum_mantissas
-  TAX     ; Store difference in X register.
-  BPL shift_second_mantissa ; Shift second mantissa if exp1 > exp2.
-shift_first_mantissa:
-  ; pull status register from stack to prevent overflow
+  SBC $05
+  BEQ .sum_mantissas
+  TAX
+  BPL .shift_second_mantissa
+
+.shift_first_mantissa:
+  ; Remove old carry bit from stack.
+  ; Rotate first mantissa right by 1 bit.
+  ; Push new carry bit onto stack.
+  ; If a 1 was shifted off, increment Y.
+  ; Increment X, if X == 0, proceed to sum mantissas.
   PLP
-  ; rotate all bits of mantissa one right
   LSR $09
   ROR $08
   ROR $07
-  ; increment Y if the bit shifted out was a 1, and store carry
   PHP
-  BCC zero_shifted_out_first
+  BCC .zero_shifted_out_first
   INY
-zero_shifted_out_first:
-  ; increment X. loop if X != 0, otherwise proceed to sum mantissas
+.zero_shifted_out_first:
   INX
   CPX #$00
-  BNE shift_first_mantissa
-  ; first float must have correct exponent
+  BNE .shift_first_mantissa
+  
+  ; We operate in place on the first parameter, so update its exponent.
   LDA $05
   STA $0a
-  JMP sum_mantissas
+  JMP .sum_mantissas
 
-shift_second_mantissa:
-  ; pull status register from stack to prevent overflow
+.shift_second_mantissa:
+  ; Remove old carry bit from stack.
+  ; Rotate second mantissa right by 1 bit.
+  ; Push new carry bit onto stack.
+  ; If a 1 was shifted off, increment Y.
+  ; Decrement X, if X == 0, proceed to sum mantissas.
   PLP
-  ; rotate all bits of mantissa one right
   LSR $04
   ROR $03
   ROR $02
-  ; increment Y if the bit shifted out was a 1, and store carry
   PHP
-  BCC zero_shifted_out_second
+  BCC .zero_shifted_out_second
   INY
-zero_shifted_out_second:
-  ; decrement X. loop if X != 0
+.zero_shifted_out_second:
   DEX
   CPX #$00
-  BNE shift_second_mantissa
+  BNE .shift_second_mantissa
 
-sum_mantissas:
+.sum_mantissas:
+  ; Add second mantissa to first mantissa.
+  ; If addition overflows, shift mantissa down and increment exponent.
   CLC
-  ; sum mantissas
   LDA $07
   ADC $02
   STA $07
@@ -127,28 +134,31 @@ sum_mantissas:
   LDA $09
   ADC $04
   STA $09
-  ; if mantissas do not overflow, go to rounding
-  BCC round
-  ; if mantissa overflows, shift mantissa down and increment exponent
+  BCC .round
   ROR $09
   ROR $08
   ROR $07
   INC $0a
 
-round:
-  ; round mantissas to even
+.round:
+  ; Round new mantissa to even.
+  ; If bits shifted off had pattern 0xxx, simply truncate and return.
+  ; If bits shifted off had pattern 1xxx with Y >= 2, increment mantissa.
+  ; Otherwise, increment mantissa if LSB is 1.
   PLP
-  ; if the last bit shifted out was a 0 just return
-  BCC return
-rounding_msb_one:
+  BCC .return
+
+.rounding_msb_one:
   CPY #$02
-  BCS increment_mantissa
+  BCS .increment_mantissa
+
   LDA $09
-  ; mask off all but the LSB of the new mantissa
   AND #$01
-  ; if the LSB is 0, return
-  BEQ return
-increment_mantissa:
+  BEQ .return
+
+.increment_mantissa:
+  ; Increment the mantissa by 1.
+  ; If shifting overflows the mantissa, shift mantissa down and round again.
   CLC
   LDA $07
   ADC #$01
@@ -159,26 +169,28 @@ increment_mantissa:
   LDA $09
   ADC #$00
   STA $09
-  BCC return
-  ; we overflowed the mantissa during rounding
+  BCC .return
+
   ROR $09
   ROR $08
   ROR $07
   PHP
   INC $0a
   PLP
-  BCC return
+  BCC .return
   INY
-  JMP rounding_msb_one
+  JMP .rounding_msb_one
 
-return:
-  ; shift implied bit out of mantissa, rotate sign and exp LSB through
+.return:
+  ; Shift out implicit bit, shift exponent and sign through.
+  ; Push return value onto stack.
+  ; Push return address onto stack.
+  ; Return from subroutine.
   ASL $09
   LSR $0b
   ROR $0a
   ROR $09
 
-  ; push return value onto stack
   LDA $0a
   PHA
   LDA $09
@@ -188,7 +200,6 @@ return:
   LDA $07
   PHA
 
-  ; push return address back onto stack
   LDA $01
   PHA
   LDA $00
