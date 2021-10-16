@@ -63,6 +63,124 @@ addition:
   SEC
   ROR $09
 
+.manage_special_values:
+  ; Check if first parameter has exponent $ff.
+  ; If it does, first parameter is some special quantity.
+  ; If not, check if second parameter has epxonent $ff.
+  ; If it does, then it is special and the first parameter is not, so propagate.
+  ; If neither parameter is special, move on to aligning mantissas.
+  LDA $0a
+  CMP #$ff
+  BEQ .first_parameter_special
+  LDA $05
+  CMP #$ff
+  BEQ .propagate_second_parameter
+  JMP .align_mantissas
+
+.first_parameter_special:
+  ; Exponent is non-zero, so an implicit 1 has been added to mantissa.
+  ; Unless the mantissa with added implicit 1 is $800000, return first param.
+  ; If the mantissa is precisely $800000, first param is ±∞.
+  LDA $09
+  CMP #$80
+  BNE .propagate_first_parameter
+  LDA $08
+  CMP #$00
+  BNE .propagate_first_parameter
+  LDA $07
+  CMP #$00
+  BEQ .first_parameter_infinite
+
+.propagate_first_parameter:
+  ; Shift out implicit bit, shift exponent and sign through.
+  ; Push return value onto stack.
+  ; Push return address onto stack.
+  ; Return from subroutine.
+  ASL $09
+  LSR $0b
+  ROR $0a
+  ROR $09
+
+  LDA $0a
+  PHA
+  LDA $09
+  PHA
+  LDA $08
+  PHA
+  LDA $07
+  PHA
+
+  LDA $01
+  PHA
+  LDA $00
+  PHA
+
+  RTS
+
+.first_parameter_infinite:
+  ; Check if second parameter is also ±∞.
+  ; If second param is not special, propagate infinity.
+  ; If second param is NaN, propagate NaN.
+  LDA $05
+  CMP #$ff
+  BNE .propagate_first_parameter
+  LDA $04
+  CMP #$80
+  BNE .propagate_second_parameter
+  LDA $03
+  CMP #$00
+  BNE .propagate_second_parameter
+  LDA $02
+  CMP #$00
+  BNE .propagate_second_parameter
+
+.adding_infinities:
+  ; First and second parameters are both ±∞.
+  ; Check if they have opposite sign.
+  ; (+∞)+(-∞) = (-∞)+(+∞) = NaN.
+  ; If they have opposite sign, return a NaN.
+  ; Otherwise, return the first parameter.
+  LDA $06
+  EOR $0b
+  BEQ .propagate_first_parameter
+  LDA #$ff
+  PHA
+  PHA
+  PHA
+  PHA
+  LDA $01
+  PHA
+  LDA $00
+  PHA
+
+  RTS
+
+.propagate_second_parameter:
+  ; Shift out implicit bit, shift exponent and sign through.
+  ; Push return value onto stack.
+  ; Push return address onto stack.
+  ; Return from subroutine.
+  ASL $04
+  LSR $06
+  ROR $05
+  ROR $04
+
+  LDA $05
+  PHA
+  LDA $04
+  PHA
+  LDA $03
+  PHA
+  LDA $02
+  PHA
+
+  LDA $01
+  PHA
+  LDA $00
+  PHA
+
+  RTS
+
 .align_mantissas:
   ; Y stores the number of 1 bits shifted off in alignment.
   ; Carry bit stores the value of the last bit shifted off.
@@ -70,10 +188,11 @@ addition:
   CLC
   PHP
 
-  ; Subtract EXP2 from EXP1 already stored in A.
+  ; Subtract EXP2 from EXP1.
   ; If EXP1 - EXP2 == 0, sum mantissas.
   ; If EXP1 - EXP2  > 0, shift second mantissa down.
   ; If EXP1 - EXP2  < 0, shift first mantissa down.
+  LDA $0a
   SEC
   SBC $05
   BEQ .sum_mantissas
