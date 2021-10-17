@@ -243,6 +243,7 @@ addition:
 .sum_mantissas:
   ; Add second mantissa to first mantissa.
   ; If addition overflows, shift mantissa down and increment exponent.
+  ; If incrementing the exponent causes it to reach #$ff, return ±∞.
   CLC
   LDA $07
   ADC $02
@@ -258,6 +259,9 @@ addition:
   ROR $08
   ROR $07
   INC $0a
+  LDA $0a
+  CMP #$ff
+  BEQ .overflow_return
 
 .round:
   ; Round new mantissa to even.
@@ -278,6 +282,7 @@ addition:
 .increment_mantissa:
   ; Increment the mantissa by 1.
   ; If shifting overflows the mantissa, shift mantissa down and round again.
+  ; If incrementing the exponent causes it to reach #$ff, return ±∞.
   CLC
   LDA $07
   ADC #$01
@@ -295,11 +300,22 @@ addition:
   ROR $07
   PHP
   INC $0a
+  LDA $0a
+  CMP #$ff
+  BEQ .overflow_return
   PLP
   BCC .return
   INY
   JMP .rounding_msb_one
 
+.overflow_return:
+  ; The exponent has reached #$ff, so zero the mantissa to return ±∞.
+  ; First remove the processor status register on the stack.
+  PLP
+  LDA #$00
+  STA $07
+  STA $08
+  STA $09
 .return:
   ; Shift out implicit bit, shift exponent and sign through.
   ; Push return value onto stack.
