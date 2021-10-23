@@ -1,3 +1,16 @@
+; Memory Map
+; +=============================================================================+
+; |  SIGN_ONE  |EXPONENT_ONE|MANTISSA_ONE|  SIGN_TWO  |EXPONENT_TWO|MANTISSA_TWO|
+; +------------+------------+------------+------------+------------+------------+
+; |     02     |     03     |  04 -- 0a  |     0b     |     0c     |  0d -- 13  |
+; +=============================================================================+
+SIGN_ONE = $02
+EXPONENT_ONE = $03
+MANTISSA_ONE = $04
+SIGN_TWO = $0b
+EXPONENT_TWO = $0c
+MANTISSA_TWO = $0d
+
 addition:
   ; Begin by pulling return address off of stack.
   PLA
@@ -7,61 +20,61 @@ addition:
 
   ; Pull 2 LSBs of second parameter off of stack.
   PLA
-  STA $02
+  STA MANTISSA_TWO + 3
   PLA
-  STA $03
+  STA MANTISSA_TWO + 2
 
   ; Pull MSB of mantissa off of stack and shift exponent LSB into carry.
   PLA
   ASL
-  STA $04
+  STA MANTISSA_TWO + 1
 
   ; Pull MSB off of stack, shift in exponent LSB, store sign at $06.
   PLA
   ROL
-  STA $05
-  ROL $06
+  STA EXPONENT_TWO
+  ROL SIGN_TWO
 
   ; Pull 2 LSBs of first parameter off of stack.
   PLA
-  STA $07
+  STA MANTISSA_ONE + 3
   PLA
-  STA $08
+  STA MANTISSA_ONE + 2
 
   ; Pull MSB of mantissa off of stack and shift exponent LSB into carry.
   PLA
   ASL
-  STA $09
+  STA MANTISSA_ONE + 1
 
   ; Pull MSB off of stack, shift in exponent LSB, store sign at $0b.
   PLA
   ROL
-  STA $0a
-  ROL $0b
+  STA EXPONENT_ONE
+  ROL SIGN_ONE
 
   ; Add appropriate implicit 1's/0's to mantissas.
   ; Shift in an implicit 1 if exponent != 0, else implicit 0.
 .add_second_implicit_bit:
-  LDA $05
+  LDA EXPONENT_TWO
   CMP #$00
   BNE .second_parameter_normal
   CLC
-  ROR $04
+  ROR MANTISSA_TWO + 1
   JMP .add_first_implicit_bit
 .second_parameter_normal:
   SEC
-  ROR $04
+  ROR MANTISSA_TWO + 1
   
 .add_first_implicit_bit:
-  LDA $0a
+  LDA EXPONENT_ONE
   CMP #$00
   BNE .first_parameter_normal
   CLC
-  ROR $09
+  ROR MANTISSA_ONE + 1
   JMP .align_mantissas
 .first_parameter_normal:
   SEC
-  ROR $09
+  ROR MANTISSA_ONE + 1
 
 .manage_special_values:
   ; Check if first parameter has exponent $ff.
@@ -69,10 +82,10 @@ addition:
   ; If not, check if second parameter has epxonent $ff.
   ; If it does, then it is special and the first parameter is not, so propagate.
   ; If neither parameter is special, move on to aligning mantissas.
-  LDA $0a
+  LDA EXPONENT_ONE
   CMP #$ff
   BEQ .first_parameter_special
-  LDA $05
+  LDA EXPONENT_TWO
   CMP #$ff
   BEQ .propagate_second_parameter
   JMP .align_mantissas
@@ -81,13 +94,13 @@ addition:
   ; Exponent is non-zero, so an implicit 1 has been added to mantissa.
   ; Unless the mantissa with added implicit 1 is $800000, return first param.
   ; If the mantissa is precisely $800000, first param is ±∞.
-  LDA $09
+  LDA EXPONENT_ONE
   CMP #$80
   BNE .propagate_first_parameter
-  LDA $08
+  LDA EXPONENT_ONE + 1
   CMP #$00
   BNE .propagate_first_parameter
-  LDA $07
+  LDA EXPONENT_ONE + 2
   CMP #$00
   BEQ .first_parameter_infinite
 
@@ -96,18 +109,18 @@ addition:
   ; Push return value onto stack.
   ; Push return address onto stack.
   ; Return from subroutine.
-  ASL $09
-  LSR $0b
-  ROR $0a
-  ROR $09
+  ASL MANTISSA_ONE + 1
+  LSR SIGN_ONE
+  ROR EXPONENT_ONE
+  ROR MANTISSA_ONE + 1
 
-  LDA $0a
+  LDA EXPONENT_ONE
   PHA
-  LDA $09
+  LDA MANTISSA_ONE + 1
   PHA
-  LDA $08
+  LDA MANTISSA_ONE + 2
   PHA
-  LDA $07
+  LDA MANTISSA_ONE + 3
   PHA
 
   LDA $01
@@ -121,16 +134,16 @@ addition:
   ; Check if second parameter is also ±∞.
   ; If second param is not special, propagate infinity.
   ; If second param is NaN, propagate NaN.
-  LDA $05
+  LDA EXPONENT_TWO
   CMP #$ff
   BNE .propagate_first_parameter
-  LDA $04
+  LDA MANTISSA_TWO + 1
   CMP #$80
   BNE .propagate_second_parameter
-  LDA $03
+  LDA MANTISSA_TWO + 2
   CMP #$00
   BNE .propagate_second_parameter
-  LDA $02
+  LDA MANTISSA_TWO + 3
   CMP #$00
   BNE .propagate_second_parameter
 
@@ -140,8 +153,8 @@ addition:
   ; (+∞)+(-∞) = (-∞)+(+∞) = NaN.
   ; If they have opposite sign, return a NaN.
   ; Otherwise, return the first parameter.
-  LDA $06
-  EOR $0b
+  LDA SIGN_ONE
+  EOR SIGN_TWO
   BEQ .propagate_first_parameter
   LDA #$ff
   PHA
@@ -160,18 +173,18 @@ addition:
   ; Push return value onto stack.
   ; Push return address onto stack.
   ; Return from subroutine.
-  ASL $04
-  LSR $06
-  ROR $05
-  ROR $04
+  ASL MANTISSA_TWO + 1
+  LSR SIGN_TWO
+  ROR EXPONENT_TWO
+  ROR MANTISSA_TWO + 1
 
-  LDA $05
+  LDA EXPONENT_TWO
   PHA
-  LDA $04
+  LDA MANTISSA_TWO + 1
   PHA
-  LDA $03
+  LDA MANTISSA_TWO + 2
   PHA
-  LDA $02
+  LDA MANTISSA_TWO + 3
   PHA
 
   LDA $01
@@ -182,157 +195,309 @@ addition:
   RTS
 
 .align_mantissas:
-  ; Y stores the number of 1 bits shifted off in alignment.
-  ; Carry bit stores the value of the last bit shifted off.
-  LDY #$00
-  CLC
-  PHP
-
-  ; Subtract EXP2 from EXP1.
-  ; If EXP1 - EXP2 == 0, sum mantissas.
-  ; If EXP1 - EXP2  > 0, shift second mantissa down.
-  ; If EXP1 - EXP2  < 0, shift first mantissa down.
-  LDA $0a
+  ; Check if the mantissas differ by 25 or more.
+  ; If they do, propagate the parameter with the larger mantissa.
+  ; If they don't, shift the mantissa of the smaller parameter.
+  ; Store the bits shifted off in $0b-$0d.
   SEC
-  SBC $05
-  BEQ .sum_mantissas
+  LDA EXPONENT_TWO
+  SBC EXPONENT_ONE
+  BCC .first_difference_underflow
+  CMP #25
+  BCS .propagate_second_parameter
+.first_difference_underflow:
+  SEC
+  LDA EXPONENT_ONE
+  SBC EXPONENT_TWO
+  BCC .second_difference_underflow
+  CMP #25
+  BCS .propagate_first_parameter
+.second_difference_underflow:
+  CMP #$00
+  BEQ .apply_signs
   TAX
-  BPL .shift_second_mantissa
-
+  BCC .shift_second_mantissa
 .shift_first_mantissa:
-  ; Remove old carry bit from stack.
-  ; Rotate first mantissa right by 1 bit.
-  ; Push new carry bit onto stack.
-  ; If a 1 was shifted off, increment Y.
-  ; Increment X, if X == 0, proceed to sum mantissas.
-  PLP
-  LSR $09
-  ROR $08
-  ROR $07
-  PHP
-  BCC .zero_shifted_out_first
-  INY
-.zero_shifted_out_first:
+  LSR MANTISSA_ONE + 1
+  ROR MANTISSA_ONE + 2
+  ROR MANTISSA_ONE + 3
+  ROR MANTISSA_ONE + 4
+  ROR MANTISSA_ONE + 5
+  ROR MANTISSA_ONE + 6
   INX
   CPX #$00
   BNE .shift_first_mantissa
-  
-  ; We operate in place on the first parameter, so update its exponent.
-  LDA $05
-  STA $0a
-  JMP .sum_mantissas
 
+  LDA EXPONENT_TWO
+  STA EXPONENT_ONE
+  JMP .apply_signs
 .shift_second_mantissa:
-  ; Remove old carry bit from stack.
-  ; Rotate second mantissa right by 1 bit.
-  ; Push new carry bit onto stack.
-  ; If a 1 was shifted off, increment Y.
-  ; Decrement X, if X == 0, proceed to sum mantissas.
-  PLP
-  LSR $04
-  ROR $03
-  ROR $02
-  PHP
-  BCC .zero_shifted_out_second
-  INY
-.zero_shifted_out_second:
+  LSR MANTISSA_TWO + 1
+  ROR MANTISSA_TWO + 2
+  ROR MANTISSA_TWO + 3
+  ROR MANTISSA_TWO + 4
+  ROR MANTISSA_TWO + 5
+  ROR MANTISSA_TWO + 6
   DEX
   CPX #$00
   BNE .shift_second_mantissa
 
-.sum_mantissas:
-  ; Add second mantissa to first mantissa.
-  ; If addition overflows, shift mantissa down and increment exponent.
-  ; If incrementing the exponent causes it to reach #$ff, return ±∞.
+.apply_signs:
+.negate_first_mantissa
+  LDA SIGN_ONE
+  CMP #$00
+  BEQ .negate_second_mantissa
+  LDA MANTISSA_ONE
+  EOR #$ff
+  STA MANTISSA_ONE
+  LDA MANTISSA_ONE + 1
+  EOR #$ff
+  STA MANTISSA_ONE + 1
+  LDA MANTISSA_ONE + 2
+  EOR #$ff
+  STA MANTISSA_ONE + 2
+  LDA MANTISSA_ONE + 3
+  EOR #$ff
+  STA MANTISSA_ONE + 3
+  LDA MANTISSA_ONE + 4
+  EOR #$ff
+  STA MANTISSA_ONE + 4
+  LDA MANTISSA_ONE + 5
+  EOR #$ff
+  STA MANTISSA_ONE + 5
+  LDA MANTISSA_ONE + 6
+  EOR #$ff
   CLC
-  LDA $07
-  ADC $02
-  STA $07
-  LDA $08
-  ADC $03
-  STA $08
-  LDA $09
-  ADC $04
-  STA $09
-  BCC .round
-  ROR $09
-  ROR $08
-  ROR $07
-  INC $0a
-  LDA $0a
-  CMP #$ff
-  BEQ .overflow_return
+  ADC #$01
+  STA MANTISSA_ONE + 6
+  LDA MANTISSA_ONE + 5
+  ADC #$00
+  STA MANTISSA_ONE + 5
+  LDA MANTISSA_ONE + 4
+  ADC #$00
+  STA MANTISSA_ONE + 4
+  LDA MANTISSA_ONE + 3
+  ADC #$00
+  STA MANTISSA_ONE + 3
+  LDA MANTISSA_ONE + 2
+  ADC #$00
+  STA MANTISSA_ONE + 2
+  LDA MANTISSA_ONE + 1
+  ADC #$00
+  STA MANTISSA_ONE + 1
+  LDA MANTISSA_ONE
+  ADC #$00
+  STA MANTISSA_ONE
+.negate_second_mantissa
+  LDA SIGN_TWO
+  CMP #$00
+  BEQ .sum_mantissas
+  LDA MANTISSA_TWO
+  EOR #$ff
+  STA MANTISSA_TWO
+  LDA MANTISSA_TWO + 1
+  EOR #$ff
+  STA MANTISSA_TWO + 1
+  LDA MANTISSA_TWO + 2
+  EOR #$ff
+  STA MANTISSA_TWO + 2
+  LDA MANTISSA_TWO + 3
+  EOR #$ff
+  STA MANTISSA_TWO + 3
+  LDA MANTISSA_TWO + 4
+  EOR #$ff
+  STA MANTISSA_TWO + 4
+  LDA MANTISSA_TWO + 5
+  EOR #$ff
+  STA MANTISSA_TWO + 5
+  LDA MANTISSA_TWO + 6
+  EOR #$ff
+  CLC
+  ADC #$01
+  STA MANTISSA_TWO + 6
+  LDA MANTISSA_TWO + 5
+  ADC #$00
+  STA MANTISSA_TWO + 5
+  LDA MANTISSA_TWO + 4
+  ADC #$00
+  STA MANTISSA_TWO + 4
+  LDA MANTISSA_TWO + 3
+  ADC #$00
+  STA MANTISSA_TWO + 3
+  LDA MANTISSA_TWO + 2
+  ADC #$00
+  STA MANTISSA_TWO + 2
+  LDA MANTISSA_TWO + 1
+  ADC #$00
+  STA MANTISSA_TWO + 1
+  LDA MANTISSA_TWO
+  ADC #$00
+  STA MANTISSA_TWO
+
+.sum_mantissas:
+  CLC
+  LDA MANTISSA_ONE + 6
+  ADC MANTISSA_TWO + 6
+  STA MANTISSA_ONE + 6
+  LDA MANTISSA_ONE + 5
+  ADC MANTISSA_TWO + 5
+  STA MANTISSA_ONE + 5
+  LDA MANTISSA_ONE + 4
+  ADC MANTISSA_TWO + 4
+  STA MANTISSA_ONE + 4
+  LDA MANTISSA_ONE + 3
+  ADC MANTISSA_TWO + 3
+  STA MANTISSA_ONE + 3
+  LDA MANTISSA_ONE + 2
+  ADC MANTISSA_TWO + 2
+  STA MANTISSA_ONE + 2
+  LDA MANTISSA_ONE + 1
+  ADC MANTISSA_TWO + 1
+  STA MANTISSA_ONE + 1
+  LDA MANTISSA_ONE
+  ADC MANTISSA_TWO
+  STA MANTISSA_ONE
+
+  AND #$80
+  CMP #$00
+  BEQ .positive_sum
+
+  LDA MANTISSA_ONE
+  EOR #$ff
+  STA MANTISSA_ONE
+  LDA MANTISSA_ONE + 1
+  EOR #$ff
+  STA MANTISSA_ONE + 1
+  LDA MANTISSA_ONE + 2
+  EOR #$ff
+  STA MANTISSA_ONE + 2
+  LDA MANTISSA_ONE + 3
+  EOR #$ff
+  STA MANTISSA_ONE + 3
+  LDA MANTISSA_ONE + 4
+  EOR #$ff
+  STA MANTISSA_ONE + 4
+  LDA MANTISSA_ONE + 5
+  EOR #$ff
+  STA MANTISSA_ONE + 5
+  LDA MANTISSA_ONE + 6
+  EOR #$ff
+  CLC
+  ADC #$01
+  STA MANTISSA_ONE + 6
+  LDA MANTISSA_ONE + 5
+  ADC #$00
+  STA MANTISSA_ONE + 5
+  LDA MANTISSA_ONE + 4
+  ADC #$00
+  STA MANTISSA_ONE + 4
+  LDA MANTISSA_ONE + 3
+  ADC #$00
+  STA MANTISSA_ONE + 3
+  LDA MANTISSA_ONE + 2
+  ADC #$00
+  STA MANTISSA_ONE + 2
+  LDA MANTISSA_ONE + 1
+  ADC #$00
+  STA MANTISSA_ONE + 1
+  LDA MANTISSA_ONE
+  ADC #$00
+  STA MANTISSA_ONE
+  LDA #$01
+  STA SIGN_ONE
+.positive_sum:
+  LDA #$00
+  STA SIGN_ONE
+
+.normalise_mantissa:
+  ; Now that the new mantissa has been computed, normalise it.
+  LDA MANTISSA_ONE
+  AND #$01
+  CMP #$01
+  BNE .no_overflow
+  ; if we overflowed, shift down one
+  LSR MANTISSA_ONE
+  ROR MANTISSA_ONE + 1
+  ROR MANTISSA_ONE + 2
+  ROR MANTISSA_ONE + 3
+  ROR MANTISSA_ONE + 4
+  ROR MANTISSA_ONE + 5
+  ROR MANTISSA_ONE + 6
+  INC EXPONENT_ONE
+  JMP .round
+.no_overflow:
+  LDA MANTISSA_ONE + 1
+  AND #$80
+  CMP #$80
+  BEQ .round
+  LDA EXPONENT_ONE
+  CMP #$00
+  BEQ .round
+  ASL MANTISSA_ONE + 6
+  ROL MANTISSA_ONE + 5
+  ROL MANTISSA_ONE + 4
+  ROL MANTISSA_ONE + 3
+  ROL MANTISSA_ONE + 2
+  ROL MANTISSA_ONE + 1
+  ROL MANTISSA_ONE
+  DEC EXPONENT_ONE
+  JMP .no_overflow
 
 .round:
-  ; Round new mantissa to even.
-  ; If bits shifted off had pattern 0xxx, simply truncate and return.
-  ; If bits shifted off had pattern 1xxx with Y >= 2, increment mantissa.
-  ; Otherwise, increment mantissa if LSB is 1.
-  PLP
-  BCC .return
-
-.rounding_msb_one:
-  CPY #$02
-  BCS .increment_mantissa
-
-  LDA $09
+  LDA MANTISSA_ONE + 4
+  AND #$80
+  CMP #$00
+  BEQ .return
+  LDA MANTISSA_ONE + 4
+  AND #$7f
+  CMP #$00
+  BNE .round_up
+  LDA MANTISSA_ONE + 5
+  CMP #$00
+  BNE .round_up
+  LDA MANTISSA_ONE + 6
+  CMP #$00
+  BNE .round_up
+  LDA MANTISSA_ONE + 3
   AND #$01
+  CMP #$00
   BEQ .return
 
-.increment_mantissa:
-  ; Increment the mantissa by 1.
-  ; If shifting overflows the mantissa, shift mantissa down and round again.
-  ; If incrementing the exponent causes it to reach #$ff, return ±∞.
+.round_up:
   CLC
-  LDA $07
+  LDA MANTISSA_ONE + 3
   ADC #$01
-  STA $07
-  LDA $08
+  LDA MANTISSA_ONE + 2
   ADC #$00
-  STA $08
-  LDA $09
+  LDA MANTISSA_ONE + 1
   ADC #$00
-  STA $09
   BCC .return
+  ROL MANTISSA_ONE + 1
+  ROL MANTISSA_ONE + 2
+  ROL MANTISSA_ONE + 3
+  ROL MANTISSA_ONE + 4
+  ROL MANTISSA_ONE + 5
+  ROL MANTISSA_ONE + 6
+  INC EXPONENT_ONE
+  JMP .round
 
-  ROR $09
-  ROR $08
-  ROR $07
-  PHP
-  INC $0a
-  LDA $0a
-  CMP #$ff
-  BEQ .overflow_return
-  PLP
-  BCC .return
-  INY
-  JMP .rounding_msb_one
-
-.overflow_return:
-  ; The exponent has reached #$ff, so zero the mantissa to return ±∞.
-  ; First remove the processor status register on the stack.
-  PLP
-  LDA #$00
-  STA $07
-  STA $08
-  STA $09
 .return:
   ; Shift out implicit bit, shift exponent and sign through.
   ; Push return value onto stack.
   ; Push return address onto stack.
   ; Return from subroutine.
-  ASL $09
-  LSR $0b
-  ROR $0a
-  ROR $09
+  ASL MANTISSA_ONE
+  LSR SIGN_ONE
+  ROR EXPONENT_ONE
+  ROR MANTISSA_ONE
 
-  LDA $0a
+  LDA MANTISSA_ONE
   PHA
-  LDA $09
+  LDA MANTISSA_ONE + 1
   PHA
-  LDA $08
+  LDA MANTISSA_ONE + 2
   PHA
-  LDA $07
+  LDA MANTISSA_ONE + 3
   PHA
 
   LDA $01
