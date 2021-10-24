@@ -467,10 +467,13 @@ addition:
   CLC
   LDA MANTISSA_ONE + 3
   ADC #$01
+  STA MANTISSA_ONE + 3
   LDA MANTISSA_ONE + 2
   ADC #$00
+  STA MANTISSA_ONE + 2
   LDA MANTISSA_ONE + 1
   ADC #$00
+  STA MANTISSA_ONE + 1
   BCC .return
   ROL MANTISSA_ONE + 1
   ROL MANTISSA_ONE + 2
@@ -486,12 +489,12 @@ addition:
   ; Push return value onto stack.
   ; Push return address onto stack.
   ; Return from subroutine.
-  ASL MANTISSA_ONE
+  ASL MANTISSA_ONE + 1
   LSR SIGN_ONE
   ROR EXPONENT_ONE
-  ROR MANTISSA_ONE
+  ROR MANTISSA_ONE + 1
 
-  LDA MANTISSA_ONE
+  LDA EXPONENT_ONE
   PHA
   LDA MANTISSA_ONE + 1
   PHA
