@@ -1,9 +1,3 @@
-; Memory Map
-; +=============================================================================+
-; |  SIGN_ONE  |EXPONENT_ONE|MANTISSA_ONE|  SIGN_TWO  |EXPONENT_TWO|MANTISSA_TWO|
-; +------------+------------+------------+------------+------------+------------+
-; |     02     |     03     |  04 -- 0a  |     0b     |     0c     |  0d -- 13  |
-; +=============================================================================+
 SIGN_ONE = $02
 EXPONENT_ONE = $03
 MANTISSA_ONE = $04
@@ -20,16 +14,18 @@ addition:
 
   ; Pull 2 LSBs of second parameter off of stack.
   PLA
+  ASL
   STA MANTISSA_TWO + 3
   PLA
+  ROL
   STA MANTISSA_TWO + 2
 
   ; Pull MSB of mantissa off of stack and shift exponent LSB into carry.
   PLA
-  ASL
+  ROL
   STA MANTISSA_TWO + 1
 
-  ; Pull MSB off of stack, shift in exponent LSB, store sign at $06.
+  ; Pull MSB off of stack, shift in exponent LSB, store sign.
   PLA
   ROL
   STA EXPONENT_TWO
@@ -37,49 +33,46 @@ addition:
 
   ; Pull 2 LSBs of first parameter off of stack.
   PLA
+  ASL
   STA MANTISSA_ONE + 3
   PLA
+  ROL
   STA MANTISSA_ONE + 2
 
   ; Pull MSB of mantissa off of stack and shift exponent LSB into carry.
   PLA
-  ASL
+  ROL
   STA MANTISSA_ONE + 1
 
-  ; Pull MSB off of stack, shift in exponent LSB, store sign at $0b.
+  ; Pull MSB off of stack, shift in exponent LSB, store sign.
   PLA
   ROL
   STA EXPONENT_ONE
   ROL SIGN_ONE
 
-  ; Add appropriate implicit 1's/0's to mantissas.
-  ; Shift in an implicit 1 if exponent != 0, else implicit 0.
+  ; Add implicit 1 to mantissas if appropriate.
 .add_second_implicit_bit:
   LDA EXPONENT_TWO
   CMP #$00
-  BNE .second_parameter_normal
-  CLC
-  ROR MANTISSA_TWO + 1
-  JMP .add_first_implicit_bit
-.second_parameter_normal:
+  BEQ .add_first_implicit_bit
   SEC
   ROR MANTISSA_TWO + 1
+  ROR MANTISSA_TWO + 2
+  ROR MANTISSA_TWO + 3
   
 .add_first_implicit_bit:
   LDA EXPONENT_ONE
   CMP #$00
-  BNE .first_parameter_normal
-  CLC
-  ROR MANTISSA_ONE + 1
-  JMP .align_mantissas
-.first_parameter_normal:
+  BEQ .manage_special_values
   SEC
   ROR MANTISSA_ONE + 1
+  ROR MANTISSA_ONE + 2
+  ROR MANTISSA_ONE + 3
 
 .manage_special_values:
-  ; Check if first parameter has exponent $ff.
+  ; Check if first parameter has exponent #$ff.
   ; If it does, first parameter is some special quantity.
-  ; If not, check if second parameter has epxonent $ff.
+  ; If not, check if second parameter has epxonent #$ff.
   ; If it does, then it is special and the first parameter is not, so propagate.
   ; If neither parameter is special, move on to aligning mantissas.
   LDA EXPONENT_ONE
@@ -197,8 +190,7 @@ addition:
 .align_mantissas:
   ; Check if the mantissas differ by 25 or more.
   ; If they do, propagate the parameter with the larger mantissa.
-  ; If they don't, shift the mantissa of the smaller parameter.
-  ; Store the bits shifted off in $0b-$0d.
+  ; If they don't, shift the mantissa of the smaller parameter right.
   SEC
   LDA EXPONENT_TWO
   SBC EXPONENT_ONE
@@ -216,7 +208,7 @@ addition:
   CMP #$00
   BEQ .apply_signs
   TAX
-  BCC .shift_second_mantissa
+  BPL .shift_second_mantissa
 .shift_first_mantissa:
   LSR MANTISSA_ONE + 1
   ROR MANTISSA_ONE + 2
@@ -243,6 +235,8 @@ addition:
   BNE .shift_second_mantissa
 
 .apply_signs:
+  ; Check the signs of both floats.
+  ; If a float has a 1 sign bit, take the 2's complement of the mantissa.
 .negate_first_mantissa
   LDA SIGN_ONE
   CMP #$00
@@ -335,6 +329,10 @@ addition:
   STA MANTISSA_TWO
 
 .sum_mantissas:
+  ; Sum the mantissas to obtain the mantissa of the return float.
+  ; Check if the resultant mantissa has a 1 MSB.
+  ; If it does, set the result sign to 1 and take the 2's complement of the mantissa.
+  ; If it doesn't, move on to normalising the resultant mantissa.
   CLC
   LDA MANTISSA_ONE + 6
   ADC MANTISSA_TWO + 6
@@ -405,17 +403,20 @@ addition:
   STA MANTISSA_ONE
   LDA #$01
   STA SIGN_ONE
+  JMP .normalise_mantissa
 .positive_sum:
   LDA #$00
   STA SIGN_ONE
 
 .normalise_mantissa:
   ; Now that the new mantissa has been computed, normalise it.
+  ; Check if the LSB of the byte before the MSB of the mantissa is 1.
+  ; If it is, shift the mantissa down and increment the mantissa.
+  ; If it isn't, move on to checking if we must shift left.
   LDA MANTISSA_ONE
   AND #$01
   CMP #$01
   BNE .no_overflow
-  ; if we overflowed, shift down one
   LSR MANTISSA_ONE
   ROR MANTISSA_ONE + 1
   ROR MANTISSA_ONE + 2
@@ -425,7 +426,11 @@ addition:
   ROR MANTISSA_ONE + 6
   INC EXPONENT_ONE
   JMP .round
+
 .no_overflow:
+  ; Check if the MSB of the mantissa is 1.
+  ; If it is, move on to rounding.
+  ; If it isn't, shift mantissa left and decrement exponent until MSB is 1 or exponent is 0.
   LDA MANTISSA_ONE + 1
   AND #$80
   CMP #$80
@@ -444,6 +449,13 @@ addition:
   JMP .no_overflow
 
 .round:
+  ; Check if the MSB of the byte after the mantissa is 0.
+  ; If it is, return, trucating the subsequent bits.
+  ; If it isn't, check if any subsequent bits are 1.
+  ; If any are, round up.
+  ; If none are, check if the LSB of the mantissa is 1.
+  ; If it is, round up.
+  ; If it isn't, return.
   LDA MANTISSA_ONE + 4
   AND #$80
   CMP #$00
@@ -464,6 +476,14 @@ addition:
   BEQ .return
 
 .round_up:
+  ; Check if the exponent is #$ff.
+  ; If it is, return ±∞.
+  ; If it isn't, increment the mantissa by 1.
+  ; If the increment doesn't overflow, return.
+  ; If it does, shift the mantissa right, increment the exponent, and round again.
+  LDA EXPONENT_ONE
+  CMP #$ff
+  BEQ .return_infinity
   CLC
   LDA MANTISSA_ONE + 3
   ADC #$01
@@ -484,6 +504,12 @@ addition:
   INC EXPONENT_ONE
   JMP .round
 
+.return_infinity:
+  ; If we have to return ±∞ due to an over/underflow, clear the mantissa.
+  LDA #$00
+  STA MANTISSA_ONE + 1
+  STA MANTISSA_ONE + 2
+  STA MANTISSA_ONE + 3
 .return:
   ; Shift out implicit bit, shift exponent and sign through.
   ; Push return value onto stack.
