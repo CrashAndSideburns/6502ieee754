@@ -449,13 +449,18 @@ addition:
   JMP .no_overflow
 
 .round:
-  ; Check if the MSB of the byte after the mantissa is 0.
+  ; Check if we have already produced ±∞ in the event that we decide not to round.
+  ; If we have, return ±∞.
+  ; If we haven't, check if the MSB of the byte after the mantissa is 0.
   ; If it is, return, trucating the subsequent bits.
   ; If it isn't, check if any subsequent bits are 1.
   ; If any are, round up.
   ; If none are, check if the LSB of the mantissa is 1.
   ; If it is, round up.
   ; If it isn't, return.
+  LDA EXPONENT_ONE
+  CMP #$ff
+  BEQ .return_infinity
   LDA MANTISSA_ONE + 4
   AND #$80
   CMP #$00
@@ -476,14 +481,12 @@ addition:
   BEQ .return
 
 .round_up:
-  ; Check if the exponent is #$ff.
-  ; If it is, return ±∞.
-  ; If it isn't, increment the mantissa by 1.
+  ; Increment the mantissa by 1.
   ; If the increment doesn't overflow, return.
-  ; If it does, shift the mantissa right, increment the exponent, and round again.
-  LDA EXPONENT_ONE
-  CMP #$ff
-  BEQ .return_infinity
+  ; If it does, shift the mantissa right and increment the exponent.
+  ; Check if incrementing the exponent left us with an exponent of #$ff.
+  ; If it did, return ±∞.
+  ; If it didn't, round again.
   CLC
   LDA MANTISSA_ONE + 3
   ADC #$01
@@ -502,6 +505,9 @@ addition:
   ROL MANTISSA_ONE + 5
   ROL MANTISSA_ONE + 6
   INC EXPONENT_ONE
+  LDA EXPONENT_ONE
+  CMP #$ff
+  BEQ .return_infinity
   JMP .round
 
 .return_infinity:
