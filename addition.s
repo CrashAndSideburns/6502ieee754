@@ -521,6 +521,14 @@ addition:
   ; Push return value onto stack.
   ; Push return address onto stack.
   ; Return from subroutine.
+  LDA EXPONENT_ONE
+  CMP #$00
+  BNE .return_normal
+  LSR MANTISSA_ONE + 1
+  ROR MANTISSA_ONE + 2
+  ROR MANTISSA_ONE + 3
+  BCS .round_up
+.return_normal:
   ASL MANTISSA_ONE + 1
   LSR SIGN_ONE
   ROR EXPONENT_ONE
