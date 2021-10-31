@@ -87,13 +87,13 @@ addition:
   ; Exponent is non-zero, so an implicit 1 has been added to mantissa.
   ; Unless the mantissa with added implicit 1 is $800000, return first param.
   ; If the mantissa is precisely $800000, first param is ±∞.
-  LDA EXPONENT_ONE
+  LDA MANTISSA_ONE + 1
   CMP #$80
   BNE .propagate_first_parameter
-  LDA EXPONENT_ONE + 1
+  LDA MANTISSA_ONE + 2
   CMP #$00
   BNE .propagate_first_parameter
-  LDA EXPONENT_ONE + 2
+  LDA MANTISSA_ONE + 3
   CMP #$00
   BEQ .first_parameter_infinite
 
