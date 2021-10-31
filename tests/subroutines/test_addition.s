@@ -30,4 +30,4 @@ test_addition:
 
   BRK
 
-  .include "addition.s"
+  .include "../../addition.s"

@@ -23,7 +23,6 @@ class SubroutineTester:
                         "-dotdir",
                         f"-DORIGIN={self.binary_origin}",
                         f"-DADDRIO={self.addrio}",
-                        f"-I{subroutines_path}",
                         "-o",
                         f"{binary_path}",
                         test_file_path],
