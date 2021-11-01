@@ -532,7 +532,6 @@ class TestNearBaseAddition(unittest.TestCase):
         # The code to flip one bit of the second float is kind of a mess.
         float2 = numpy.frombuffer(bytes(map(lambda a, b: a ^ b, numpy.float32.tobytes(float2), numpy.int32.tobytes(numpy.int32(1 << flip_bit)))), dtype=numpy.float32)[0]
         # After flipping a bit, proceed as normal.
-        print(float2)
         expected = float1 + float2
         if numpy.isnan(expected):
             self.assertTrue(numpy.isnan(TestBasicAddition.tester.run_test(float1, float2)))
