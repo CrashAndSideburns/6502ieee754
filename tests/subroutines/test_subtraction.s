@@ -1,5 +1,5 @@
   .org ORIGIN
-test_addition:
+test_subtraction:
   LDA ADDRIO
   PHA
   LDA ADDRIO
@@ -17,7 +17,7 @@ test_addition:
   LDA ADDRIO
   PHA
 
-  JSR addition
+  JSR subtraction
 
   PLA
   STA ADDRIO
@@ -30,4 +30,4 @@ test_addition:
 
   BRK
 
-  .include "../../arithmetic/addition.s"
+  .include "../../arithmetic/subtraction.s"
